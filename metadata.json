@@ -1,0 +1,7 @@
+{
+  "name": "PulmoAI - Breath Health Monitor",
+  "description": "A sophisticated health application that analyzes your respiratory wellness based on age, blood pressure, smoking habits, and real-time local air quality index (AQI) using Gemini AI insights.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
