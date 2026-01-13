@@ -14,12 +14,12 @@ const cleanJsonResponse = (text: string): string => {
 
 /**
  * Initializes the AI instance.
- * API_KEY is injected by the environment securely.
+ * API_KEY is now mapped from VITE_GEMINI_API_KEY in vite.config.ts
  */
 const getAIInstance = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API_KEY_NOT_FOUND: Gemini API key is not available in the environment.");
+    throw new Error("API_KEY_NOT_FOUND");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -32,7 +32,7 @@ export const getHealthAnalysis = async (
   
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: `
         You are a respiratory health expert. Analyze the following profile and provide a score from 0-100.
         
@@ -85,15 +85,13 @@ const getAQIStatus = (aqi: number): string => {
   return "Hazardous";
 };
 
-/**
- * Fetches AQI data using Google Search grounding as the primary (private) method.
- * This avoids exposing any 3rd party keys in the browser's network tab.
- */
-export const fetchLocationAQI = async (lat: number, lon: number, customToken?: string): Promise<AQIData> => {
-  // If user provides a manual token in settings, we can use it, but Search is preferred for privacy.
-  if (customToken && customToken.length > 5) {
+export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIData> => {
+  // Use the mapped VITE_WAQI_API_KEY
+  const waqiToken = process.env.WAQI_API_KEY;
+
+  if (waqiToken && waqiToken !== "undefined") {
     try {
-      const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${customToken}`);
+      const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${waqiToken}`);
       const result = await response.json();
       if (result.status === 'ok') {
         return {
@@ -101,53 +99,48 @@ export const fetchLocationAQI = async (lat: number, lon: number, customToken?: s
           city: result.data.city.name,
           dominantPollutant: result.data.dominentpol?.toUpperCase() || "N/A",
           status: getAQIStatus(result.data.aqi),
-          source: "WAQI (User Provided)",
+          source: "WAQI (Live Feed)",
           groundingSources: []
         };
       }
     } catch (err) {
-      console.warn("Direct WAQI call failed, falling back to secure search:", err);
+      console.warn("Direct WAQI call failed, falling back to search grounding.");
     }
   }
 
-  // Primary Secure Method: Google Search Tool
+  // Fallback to Google Search Grounding (uses Gemini Key)
   const ai = getAIInstance();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Find the current real-world Air Quality Index (AQI) for the location at coordinates ${lat}, ${lon}. 
-      Include the numeric AQI value, the name of the city/area, and the primary pollutant if available.`,
-      config: {
-        tools: [{ googleSearch: {} }],
-      }
+      contents: `What is the current AQI for coordinates ${lat}, ${lon}?`,
+      config: { tools: [{ googleSearch: {} }] }
     });
 
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources: GroundingSource[] = groundingChunks
       .map((chunk: any) => ({
-        title: String(chunk.web?.title || chunk.web?.uri || "Search Reference"),
+        title: String(chunk.web?.title || "Search Source"),
         uri: String(chunk.web?.uri || "")
       }))
       .filter((s) => s.uri !== "");
 
     const text = response.text || "";
-    // Robust parsing for common search result patterns
     const aqiMatch = text.match(/AQI:?\s*(\d+)/i) || text.match(/(\d+)/);
     const aqiValue = aqiMatch ? parseInt(aqiMatch[1]) : 50;
 
     return {
       aqi: aqiValue,
-      city: "Detected via Google Search",
-      dominantPollutant: "See grounded sources",
+      city: "Auto-detected Location",
+      dominantPollutant: "Check sources",
       status: getAQIStatus(aqiValue),
-      source: "Google Search (Secure)",
+      source: "Google Search",
       groundingSources: sources
     };
   } catch (error) {
-    console.error("AQI Search Error:", error);
     return {
       aqi: 50,
-      city: "Unknown (Estimated)",
+      city: "Estimated Location",
       dominantPollutant: "Unknown",
       status: "Moderate",
       source: "System Fallback",

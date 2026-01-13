@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // We remove the 'define' section entirely. 
-  // We rely on the platform to inject process.env.API_KEY securely at runtime.
+  define: {
+    // Maps your Vercel/Vite environment variables to the standard process.env structure
+    'process.env.API_KEY': JSON.stringify(process.env.VITE_GEMINI_API_KEY || process.env.API_KEY),
+    'process.env.WAQI_API_KEY': JSON.stringify(process.env.VITE_WAQI_API_KEY),
+  }
 });
