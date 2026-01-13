@@ -14,11 +14,12 @@ const cleanJsonResponse = (text: string): string => {
 
 /**
  * Initializes the AI instance.
- * API_KEY is now mapped from VITE_GEMINI_API_KEY in vite.config.ts
+ * API_KEY is mapped from VITE_GEMINI_API_KEY in vite.config.ts
  */
 const getAIInstance = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
+  const apiKey = process.env.API_KEY?.trim();
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    console.error("Gemini API key is missing from environment variables.");
     throw new Error("API_KEY_NOT_FOUND");
   }
   return new GoogleGenAI({ apiKey });
@@ -72,7 +73,7 @@ export const getHealthAnalysis = async (
 
     return JSON.parse(cleanJsonResponse(text));
   } catch (error: any) {
-    console.error("Health Analysis Error:", error);
+    console.error("Health Analysis API Error:", error);
     throw error;
   }
 };
@@ -86,10 +87,9 @@ const getAQIStatus = (aqi: number): string => {
 };
 
 export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIData> => {
-  // Use the mapped VITE_WAQI_API_KEY
-  const waqiToken = process.env.WAQI_API_KEY;
+  const waqiToken = process.env.WAQI_API_KEY?.trim();
 
-  if (waqiToken && waqiToken !== "undefined") {
+  if (waqiToken && waqiToken !== "undefined" && waqiToken !== "") {
     try {
       const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${waqiToken}`);
       const result = await response.json();
@@ -104,16 +104,16 @@ export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIDat
         };
       }
     } catch (err) {
-      console.warn("Direct WAQI call failed, falling back to search grounding.");
+      console.warn("WAQI direct fetch failed.");
     }
   }
 
-  // Fallback to Google Search Grounding (uses Gemini Key)
+  // Fallback to Google Search Grounding
   const ai = getAIInstance();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `What is the current AQI for coordinates ${lat}, ${lon}?`,
+      contents: `Current AQI status for coordinates ${lat}, ${lon}.`,
       config: { tools: [{ googleSearch: {} }] }
     });
 
@@ -131,8 +131,8 @@ export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIDat
 
     return {
       aqi: aqiValue,
-      city: "Auto-detected Location",
-      dominantPollutant: "Check sources",
+      city: "Detected Location",
+      dominantPollutant: "Mixed",
       status: getAQIStatus(aqiValue),
       source: "Google Search",
       groundingSources: sources
