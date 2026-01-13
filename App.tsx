@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, HealthData, AQIData } from './types';
-import { fetchLocationAQI, getHealthAnalysis } from './services/geminiService';
+import { fetchLocationAQI, calculateBreathHealth } from './services/healthService';
 import InputForm from './components/InputForm';
 import Results from './components/Results';
 
@@ -18,31 +18,36 @@ const App: React.FC = () => {
       const aqiData = await fetchLocationAQI(lat, lon);
       setState(prev => ({ ...prev, aqi: aqiData, error: null }));
     } catch (err: any) {
-      if (err?.message === "API_KEY_NOT_FOUND") {
-        setState(prev => ({ ...prev, error: "Gemini API Key missing. Please check your environment variables." }));
+      if (err?.message === "WAQI_TOKEN_MISSING") {
+        setState(prev => ({ ...prev, error: "Setup Required: Please add VITE_WAQI_API_KEY to your Vercel Environment Variables." }));
       } else {
-        setState(prev => ({ ...prev, error: "Network error: Unable to retrieve environmental data." }));
+        setState(prev => ({ ...prev, error: "Could not retrieve local air quality data. Please check your network." }));
       }
     }
   }, []);
 
-  useEffect(() => {
+  const refreshLocationData = useCallback(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           handleFetchAQI(position.coords.latitude, position.coords.longitude);
         },
         () => {
-          setState(prev => ({ ...prev, error: "Location access denied. Please enable GPS for air quality data." }));
+          setState(prev => ({ ...prev, error: "Location access denied. Please enable GPS for real-time environment data." }));
         }
       );
     }
   }, [handleFetchAQI]);
 
-  const handleAnalysis = async (healthData: HealthData) => {
+  useEffect(() => {
+    refreshLocationData();
+  }, [refreshLocationData]);
+
+  const handleAnalysis = (healthData: HealthData) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
-    try {
+    // Simulate a brief calculation delay for UX feedback
+    setTimeout(() => {
       const effectiveAQI: AQIData = state.aqi || {
         aqi: 50,
         city: "Default Location",
@@ -50,28 +55,18 @@ const App: React.FC = () => {
         status: "Moderate"
       };
 
-      const analysis = await getHealthAnalysis(healthData, effectiveAQI);
-      setState(prev => ({ 
-        ...prev, 
-        userInput: healthData, 
-        analysis, 
-        isLoading: false 
-      }));
-    } catch (err: any) {
-      console.error("ANALYSIS_ERROR:", err);
-      let errorMessage = "Analysis Failed: ";
-      const msg = err?.message?.toLowerCase() || "";
-      
-      if (msg === 'api_key_not_found') {
-        errorMessage = "Gemini Key missing. Add VITE_GEMINI_API_KEY to your settings.";
-      } else if (msg.includes('429')) {
-        errorMessage = "AI Rate limit reached. Please wait a moment.";
-      } else {
-        errorMessage += "The AI service is currently unavailable.";
+      try {
+        const analysis = calculateBreathHealth(healthData, effectiveAQI);
+        setState(prev => ({ 
+          ...prev, 
+          userInput: healthData, 
+          analysis, 
+          isLoading: false 
+        }));
+      } catch (err) {
+        setState(prev => ({ ...prev, isLoading: false, error: "Internal processing error. Please check inputs." }));
       }
-
-      setState(prev => ({ ...prev, isLoading: false, error: errorMessage }));
-    }
+    }, 800);
   };
 
   return (
@@ -85,9 +80,9 @@ const App: React.FC = () => {
             <h1 className="text-xl font-black text-slate-800 tracking-tight">Pulmo<span className="text-blue-600">AI</span></h1>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="text-[10px] font-bold px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-              DUAL-KEY SYNC ACTIVE
+            <span className="text-[10px] font-bold px-3 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-100 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+              SECURE LOCAL ENGINE
             </span>
           </div>
         </div>
@@ -95,9 +90,9 @@ const App: React.FC = () => {
 
       <main className="max-w-5xl mx-auto px-4 mt-8">
         <div className="mb-10 text-center max-w-2xl mx-auto">
-          <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Respiratory Vitals Engine</h2>
+          <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Respiratory Vitals Analyzer</h2>
           <p className="text-slate-500 text-sm">
-            Clinical analysis correlating Age, BP, and Habit patterns with live localized pollutant tracking.
+            Clinical analysis of breath quality based on age, BP, and smoking status correlated with WAQI live environmental data.
           </p>
         </div>
 
@@ -115,20 +110,12 @@ const App: React.FC = () => {
           <div className="lg:col-span-5">
             <InputForm onSubmit={handleAnalysis} isLoading={state.isLoading} />
             <div className="mt-6 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Environment Feed</h4>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-600">AI Processor</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${process.env.API_KEY ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                    {process.env.API_KEY ? 'ACTIVE' : 'READY'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-600">Local AQI</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${state.aqi ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                    {state.aqi ? 'SYNCED' : 'INITIALIZING'}
-                  </span>
-                </div>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Live Integration</h4>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-600">WAQI API Status</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${state.aqi ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                  {state.aqi ? 'CONNECTED' : 'DISCONNECTED'}
+                </span>
               </div>
             </div>
           </div>
@@ -140,24 +127,24 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 border-4 border-blue-50 rounded-full"></div>
                   <div className="absolute inset-0 border-4 border-t-blue-600 rounded-full animate-spin"></div>
                 </div>
-                <h3 className="text-lg font-bold text-slate-800">Processing with Gemini AI...</h3>
-                <p className="text-slate-400 text-sm mt-2">Integrating your vitals with current atmospheric metrics.</p>
+                <h3 className="text-lg font-bold text-slate-800">Calculating Respiratory Score...</h3>
+                <p className="text-slate-400 text-sm mt-2">Correlating clinical data with local pollutants.</p>
               </div>
             ) : state.analysis ? (
               <Results state={state} />
             ) : (
               <div className="bg-white border-2 border-dashed border-slate-200 p-12 rounded-2xl flex flex-col items-center justify-center text-center opacity-60 min-h-[400px]">
-                <i className="fas fa-microchip text-5xl text-slate-300 mb-4"></i>
-                <h3 className="text-xl font-bold text-slate-400">Analysis Pending</h3>
-                <p className="text-slate-400 max-w-sm">Complete the profile to generate your detailed pulmonary health report.</p>
+                <i className="fas fa-heart-pulse text-5xl text-slate-300 mb-4"></i>
+                <h3 className="text-xl font-bold text-slate-400">Analysis Engine Ready</h3>
+                <p className="text-slate-400 max-w-sm">Enter your vitals to generate a personalized breath wellness report.</p>
               </div>
             )}
           </div>
         </div>
       </main>
 
-      <footer className="mt-20 border-t border-slate-200 py-8 text-center text-slate-400 text-[9px] uppercase tracking-[0.2em] font-black">
-        <p>&copy; {new Date().getFullYear()} PULMOAI // GEMINI + WAQI ARCHITECTURE</p>
+      <footer className="mt-20 border-t border-slate-200 pt-8 text-center text-slate-400 text-[9px] uppercase tracking-[0.2em] font-black">
+        <p>&copy; {new Date().getFullYear()} PULMOAI // WAQI INTEGRATED</p>
       </footer>
     </div>
   );

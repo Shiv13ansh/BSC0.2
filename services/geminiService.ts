@@ -12,19 +12,28 @@ const cleanJsonResponse = (text: string): string => {
   return cleaned.trim();
 };
 
+/**
+ * Initializes the AI instance.
+ * API_KEY is mapped from VITE_GEMINI_API_KEY in vite.config.ts
+ */
+const getAIInstance = () => {
+  const apiKey = process.env.API_KEY?.trim();
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    console.error("Gemini API key is missing from environment variables.");
+    throw new Error("API_KEY_NOT_FOUND");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const getHealthAnalysis = async (
   health: HealthData, 
   aqi: AQIData
 ): Promise<BreathAnalysis> => {
-  // Always initialize right before use as per guidelines
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY_NOT_FOUND");
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: `
         You are a respiratory health expert. Analyze the following profile and provide a score from 0-100.
         
@@ -59,7 +68,6 @@ export const getHealthAnalysis = async (
       }
     });
 
-    // Access .text property directly
     const text = response.text;
     if (!text) throw new Error("EMPTY_RESPONSE");
 
@@ -81,7 +89,6 @@ const getAQIStatus = (aqi: number): string => {
 export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIData> => {
   const waqiToken = process.env.WAQI_API_KEY?.trim();
 
-  // Try direct WAQI Feed first
   if (waqiToken && waqiToken !== "undefined" && waqiToken !== "") {
     try {
       const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${waqiToken}`);
@@ -97,50 +104,46 @@ export const fetchLocationAQI = async (lat: number, lon: number): Promise<AQIDat
         };
       }
     } catch (err) {
-      console.warn("WAQI direct fetch failed, falling back to Gemini Search.");
+      console.warn("WAQI direct fetch failed.");
     }
   }
 
-  // Fallback to Gemini with Google Search tool
-  if (!process.env.API_KEY) throw new Error("API_KEY_NOT_FOUND");
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+  // Fallback to Google Search Grounding
+  const ai = getAIInstance();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Search for the current real-time AQI (Air Quality Index) at coordinates ${lat}, ${lon}. Provide the AQI number.`,
-      config: { 
-        tools: [{ googleSearch: {} }] 
-      }
+      contents: `Current AQI status for coordinates ${lat}, ${lon}.`,
+      config: { tools: [{ googleSearch: {} }] }
     });
 
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources: GroundingSource[] = groundingChunks
       .map((chunk: any) => ({
-        title: String(chunk.web?.title || "Environmental Source"),
+        title: String(chunk.web?.title || "Search Source"),
         uri: String(chunk.web?.uri || "")
       }))
       .filter((s) => s.uri !== "");
 
     const text = response.text || "";
-    const aqiMatch = text.match(/(\d+)/);
+    const aqiMatch = text.match(/AQI:?\s*(\d+)/i) || text.match(/(\d+)/);
     const aqiValue = aqiMatch ? parseInt(aqiMatch[1]) : 50;
 
     return {
       aqi: aqiValue,
-      city: "Detected Area",
-      dominantPollutant: "PM2.5 / Ozone",
+      city: "Detected Location",
+      dominantPollutant: "Mixed",
       status: getAQIStatus(aqiValue),
-      source: "Gemini + Search",
+      source: "Google Search",
       groundingSources: sources
     };
   } catch (error) {
     return {
       aqi: 50,
-      city: "Global Average",
+      city: "Estimated Location",
       dominantPollutant: "Unknown",
       status: "Moderate",
-      source: "Default Fallback",
+      source: "System Fallback",
       groundingSources: []
     };
   }
