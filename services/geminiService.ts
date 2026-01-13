@@ -1,11 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { HealthData, AQIData, BreathAnalysis } from "../types";
+import { HealthData, AQIData, BreathAnalysis, GroundingSource } from "../types";
 
 /**
  * Utility to extract JSON from a potential markdown code block returned by the model.
  */
 const cleanJsonResponse = (text: string): string => {
-  // Remove markdown code blocks if present
   let cleaned = text.trim();
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
@@ -15,12 +14,11 @@ const cleanJsonResponse = (text: string): string => {
 
 /**
  * Initializes the AI instance.
- * Note: process.env.API_KEY is assumed to be provided by the environment.
  */
 const getAIInstance = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API_KEY_NOT_FOUND: The Gemini API key is not configured in the environment.");
+    throw new Error("API_KEY_NOT_FOUND: Gemini API key is missing in environment.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -47,11 +45,11 @@ export const getHealthAnalysis = async (
         - Air Quality Status: ${aqi.status}
         - City: ${aqi.city}
 
-        Return a JSON object containing:
-        - score: a number from 0 to 100 (100 is perfect health)
-        - summary: a 2-3 sentence clinical overview
-        - recommendations: an array of 4 actionable health tips
-        - riskFactors: an array of 2-3 identified risks
+        Return a JSON object:
+        - score: number (0-100)
+        - summary: 2-3 sentence overview
+        - recommendations: array of 4 health tips
+        - riskFactors: array of 2-3 risks
       `,
       config: {
         responseMimeType: "application/json",
@@ -69,15 +67,12 @@ export const getHealthAnalysis = async (
     });
 
     const text = response.text;
-    if (!text) {
-      throw new Error("EMPTY_RESPONSE: The model returned an empty response.");
-    }
+    if (!text) throw new Error("EMPTY_RESPONSE");
 
-    const cleanedText = cleanJsonResponse(text);
-    return JSON.parse(cleanedText);
+    return JSON.parse(cleanJsonResponse(text));
   } catch (error: any) {
-    console.error("Gemini Analysis Error:", error);
-    throw new Error(error?.message || "Failed to generate health analysis due to an internal AI error.");
+    console.error("Health Analysis Error:", error);
+    throw new Error(error?.message || "Internal AI analysis failure.");
   }
 };
 
@@ -92,64 +87,67 @@ const getAQIStatus = (aqi: number): string => {
 export const fetchLocationAQI = async (lat: number, lon: number, customToken?: string): Promise<AQIData> => {
   const waqiToken = customToken || (process.env as any).WAQI_API_KEY;
 
-  // Try WAQI API first if token is available
   if (waqiToken && waqiToken !== "undefined" && waqiToken.length > 5) {
     try {
       const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${waqiToken}`);
       const result = await response.json();
       if (result.status === 'ok') {
-        return {
-          aqi: result.data.aqi,
+        const aqiVal = result.data.aqi;
+        const data: AQIData = {
+          aqi: aqiVal,
           city: result.data.city.name,
           dominantPollutant: result.data.dominentpol?.toUpperCase() || "N/A",
-          status: getAQIStatus(result.data.aqi),
-          source: "WAQI"
+          status: getAQIStatus(aqiVal),
+          source: "WAQI",
+          groundingSources: []
         };
+        return data;
       }
     } catch (err) {
-      console.warn("WAQI API call failed:", err);
+      console.warn("WAQI API failed:", err);
     }
   }
 
-  // Fallback to Google Search grounding via Gemini
   const ai = getAIInstance();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `What is the current real-world Air Quality Index (AQI) at latitude ${lat} and longitude ${lon}? Provide the current AQI number and city name.`,
+      contents: `What is the current real-world Air Quality Index (AQI) at latitude ${lat} and longitude ${lon}?`,
       config: {
         tools: [{ googleSearch: {} }],
       }
     });
 
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const groundingSources = groundingChunks
+    const sources: GroundingSource[] = groundingChunks
       .map((chunk: any) => ({
-        title: chunk.web?.title || chunk.web?.uri,
-        uri: chunk.web?.uri
+        title: String(chunk.web?.title || chunk.web?.uri || "Source"),
+        uri: String(chunk.web?.uri || "")
       }))
-      .filter((s: any) => s.uri);
+      .filter((s) => s.uri !== "");
 
     const text = response.text || "";
     const aqiMatch = text.match(/AQI:?\s*(\d+)/i) || text.match(/(\d+)/);
     const aqiValue = aqiMatch ? parseInt(aqiMatch[1]) : 50;
 
-    return {
+    const data: AQIData = {
       aqi: aqiValue,
       city: "Detected via Search",
-      dominantPollutant: "Consult sources",
+      dominantPollutant: "Check sources",
       status: getAQIStatus(aqiValue),
       source: "Google Search",
-      groundingSources: groundingSources
+      groundingSources: sources
     };
+    return data;
   } catch (error) {
-    console.error("AQI Fallback Error:", error);
+    console.error("AQI Search Error:", error);
     return {
       aqi: 50,
       city: "Estimated Location",
       dominantPollutant: "Unknown",
       status: "Moderate",
-      source: "System Fallback"
+      source: "System Fallback",
+      groundingSources: []
     };
   }
 };

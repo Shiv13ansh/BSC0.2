@@ -1,4 +1,3 @@
-
 export enum SmokingStatus {
   NEVER = 'Never Smoked',
   FORMER = 'Former Smoker',
@@ -13,12 +12,18 @@ export interface HealthData {
   smokingStatus: SmokingStatus;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
 export interface AQIData {
   aqi: number;
   city: string;
   dominantPollutant: string;
   status: string;
   source?: string;
+  groundingSources?: GroundingSource[];
 }
 
 export interface BreathAnalysis {
