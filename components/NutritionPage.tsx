@@ -99,7 +99,7 @@ const NutritionPage: React.FC<NutritionPageProps> = ({ history }) => {
           </div>
         </div>
         <p className="text-slate-500 text-sm leading-relaxed mb-6">
-          The PulmoAI Nutritional Engine monitors your historical data for trends in Blood Sugar, Blood Pressure, and Smoking habits. When stressors cross clinical thresholds (e.g., Sugar > 140 mg/dL or AQI > 100), the system automatically triggers specific nutrient mandates designed to lower airway inflammation and protect pulmonary vascular integrity.
+          The PulmoAI Nutritional Engine monitors your historical data for trends in Blood Sugar, Blood Pressure, and Smoking habits. When stressors cross clinical thresholds (e.g., Sugar &gt; 140 mg/dL or AQI &gt; 100), the system automatically triggers specific nutrient mandates designed to lower airway inflammation and protect pulmonary vascular integrity.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
