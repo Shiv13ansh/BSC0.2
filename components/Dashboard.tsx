@@ -1,6 +1,6 @@
 import React from 'react';
 import { SavedAnalysis } from '../types';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface DashboardProps {
   history: SavedAnalysis[];
@@ -24,7 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ history, userEmail }) => {
       try {
         const dateObj = new Date(h.timestamp);
         dateLabel = isNaN(dateObj.getTime()) 
-          ? h.timestamp.split(',')[0] // Fallback if format is legacy locale string
+          ? h.timestamp.split(',')[0] 
           : dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       } catch (e) {
         dateLabel = "Err";
@@ -166,24 +166,63 @@ const Dashboard: React.FC<DashboardProps> = ({ history, userEmail }) => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
+              <thead className="bg-slate-50/50">
+                <tr>
+                  <th className="px-10 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Session Date</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Respiratory Profile</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Biometric Vitals</th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Wellness Score</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-slate-50">
                 {history.map((record) => (
                   <tr key={record.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-10 py-6">
-                      <div className="text-sm font-bold text-slate-700">
-                        {new Date(record.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                      <div className="text-sm font-bold text-slate-700 leading-tight">
+                        {new Date(record.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      <div className="text-[10px] font-medium text-slate-400">
+                        {new Date(record.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </td>
+                    <td className="px-6 py-6">
+                      <div className="flex flex-wrap gap-1.5 max-w-[250px]">
+                        {record.healthData.hasRespiratoryProblem && record.healthData.selectedDiseases.length > 0 ? (
+                          record.healthData.selectedDiseases.map((disease, idx) => (
+                            <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black rounded uppercase border border-blue-100/50">
+                              {disease}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400 italic">No chronic conditions</span>
+                        )}
+                        <span className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[9px] font-black rounded uppercase border border-slate-100">
+                          {record.healthData.smokingStatus}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-6">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase w-12">Pressure:</span>
+                          <span className="text-xs font-black text-slate-700">{record.healthData.systolicBP}/{record.healthData.diastolicBP} <span className="text-[8px] text-slate-400 font-bold uppercase">mmHg</span></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase w-12">Sugar:</span>
+                          <span className="text-xs font-black text-emerald-600">{record.healthData.sugarLevel} <span className="text-[8px] text-slate-400 font-bold uppercase">mg/dL</span></span>
+                        </div>
+                        {record.aqi && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase w-12">AQI:</span>
+                            <span className="text-xs font-black text-rose-500">{record.aqi.aqi}</span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-6 text-center">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Score</div>
-                      <span className={`px-4 py-2 rounded-xl font-black text-sm border-2 ${record.analysis.score >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                      <span className={`inline-block px-4 py-2 rounded-xl font-black text-sm border-2 ${record.analysis.score >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : record.analysis.score >= 50 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                         {record.analysis.score}%
                       </span>
-                    </td>
-                    <td className="px-6 py-6">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Vitals</div>
-                      <div className="text-xs font-bold text-slate-600">BP: {record.healthData.systolicBP}/{record.healthData.diastolicBP}</div>
-                      <div className="text-xs font-bold text-slate-600">Sugar: {record.healthData.sugarLevel}</div>
                     </td>
                   </tr>
                 ))}
